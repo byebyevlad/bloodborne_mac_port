@@ -143,10 +143,12 @@ BufferCache::BufferCache(Metal::Device& device_, Vulkan::Scheduler& scheduler_,
     if (arena_bytes < wanted_bytes) {
         reason = "the largest Metal buffer";
     }
-    ASSERT_MSG(arena_bytes >= 5_GB,
-               "This Mac's GPU allows buffers of {:.1f} GiB; the game needs 5 GiB (a Mac with "
-               "at least 16 GB of memory)",
-               double(max_buffer) / double(1_GB));
+    // The legacy arena and the span need one buffer of at least 5 GiB. The runs layout needs
+    // none that large: each run is its own buffer (~3.3 GiB of guest memory in all), so 8 GB
+    // Macs (maxBufferLength 4 GiB, issues #105, #145) start with it; checked below, after the
+    // layout is chosen.
+    const bool small_buffers = arena_bytes < 5_GB;
+    max_chunk_bytes = max_buffer & ~(16_KB - 1);
     u64 memsize = 0;
     size_t memsize_size = sizeof memsize;
     if (sysctlbyname("hw.memsize", &memsize, &memsize_size, nullptr, 0) != 0) {
@@ -218,6 +220,11 @@ BufferCache::BufferCache(Metal::Device& device_, Vulkan::Scheduler& scheduler_,
         if (forced) {
             std::printf("GPU arena: layout legacy, not %s (%s)\n", name_of(layout), forced);
             layout = Layout::Legacy;
+        } else if (!failed.empty() && small_buffers && layout == Layout::Runs) {
+            // No step back fits: span and legacy need one buffer of 5 GiB.
+            std::printf("GPU arena: layout runs although the last session had %s (this Mac's "
+                        "buffers are too small for span or legacy)\n",
+                        failed.substr(0, failed.find('\n')).c_str());
         } else if (!failed.empty() && (failed.starts_with("span") ||
                                        (failed.starts_with("runs") && layout == Layout::Runs))) {
             const Layout back = failed.starts_with("span") ? Layout::Legacy : Layout::Span;
@@ -229,6 +236,17 @@ BufferCache::BufferCache(Metal::Device& device_, Vulkan::Scheduler& scheduler_,
                         name_of(back), name_of(layout), failed.c_str(), fallback.string().c_str());
             layout = back;
         }
+    }
+    ASSERT_MSG(!small_buffers || layout == Layout::Runs,
+               "This Mac's GPU allows buffers of {:.1f} GiB; the {} layout needs 5 GiB in one "
+               "buffer (BB_ARENA_LAYOUT=runs needs none that large)",
+               double(max_buffer) / double(1_GB), name_of(layout));
+    if (small_buffers) {
+        // runs: the buffers together may cover the whole arena; only each one is limited.
+        legacy_bytes = wanted_bytes;
+        mac_arena_end = MacArenaBase + wanted_bytes;
+        std::printf("GPU arena: %.1f GiB in buffers of at most %.1f GiB (runs)\n",
+                    double(wanted_bytes) / double(1_GB), double(max_chunk_bytes) / double(1_GB));
     }
     if (layout != Layout::Legacy) {
         static const u64 guard_mb = [] {
@@ -321,7 +339,15 @@ void BufferCache::MaterializeRuns() {
                 continue;
             }
             const auto* next = chunks.NextAfter(p);
-            const VAddr end = std::min<VAddr>(w.end, next ? next->start : w.end);
+            VAddr end = std::min<VAddr>(w.end, next ? next->start : w.end);
+            if (end - p + guard_bytes > max_chunk_bytes) {
+                // Longer than one Metal buffer (8 GB Macs: 4 GiB): the rest gets the next chunk.
+                end = p + ((max_chunk_bytes - guard_bytes) & ~(u64{block_size} - 1));
+                std::printf("GPU arena: run %#llx-%#llx split at %#llx (largest Metal buffer)\n",
+                            static_cast<unsigned long long>(p),
+                            static_cast<unsigned long long>(w.end),
+                            static_cast<unsigned long long>(end));
+            }
             const u64 bytes = end - p;
             if (chunk_bytes.load() + bytes + guard_bytes > legacy_bytes) {
                 std::printf("GPU arena: no buffer for %#llx-%#llx: the buffers would pass the "

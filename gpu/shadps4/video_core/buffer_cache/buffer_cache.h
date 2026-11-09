@@ -238,6 +238,7 @@ private:
     Layout layout = Layout::Legacy;
     u64 legacy_bytes = 0; ///< the legacy arena's length: the cap on all chunks
     u64 guard_bytes = 0;  ///< past each chunk (span, runs)
+    u64 max_chunk_bytes = ~0ULL; ///< the largest Metal buffer: a run longer than it is split
     std::atomic<u64> chunk_bytes{0};
     std::mutex materialize_mutex;
     std::atomic<u64> misses{0};
