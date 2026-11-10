@@ -8,8 +8,16 @@ Status: observed, cause unknown.
   while the Small Resonant Bell in the same spots found a co-op session within a minute every time.
 - Hours of play with Beckoning Bells rung: never invaded.
 - 2026-11-10, ~00:5x–01:20: Mac 1 (level 20) on the Sinister bell, Mac 2 ringing the Beckoning Bell
-  in an area with a living boss: no match. Mac 2's level and whether a Bell-Ringing Woman appeared
-  are not recorded.
+  in an area with a living boss: no match.
+  - **Mac 2 details:** Level 15 (character `suchka`), Central Yharnam lantern, with both Cleric Beast
+    and Father Gascoigne alive.
+  - **Bell-Ringing Woman:** Did **not** appear in Mac 2's world. In Bloodborne, a solo host ringing
+    the Beckoning Bell in early areas like Central Yharnam does not spawn a chime maiden until a
+    cooperator arrives (unlike Nightmare areas where she spawns naturally, or when the host rings the
+    Sinister bell themselves).
+  - **Mac 2 THD log lines:** The log showed only regular background polling and STUN keepalives
+    (`THD: np: the server holds polls (WaitMaxMs 25000): long polling with WaitMs 25000`). No room
+    creation or matchmaking requests occurred, and no network errors were recorded.
 - While the Sinister bell rings, the log shows nothing at all: no matchmaking calls and no failed
   requests. The invader search goes through the game's own server requests, which the client logs
   only when they fail.

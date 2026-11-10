@@ -5,18 +5,20 @@ Dream. Last updated 2026-11-10.
 
 | Area (maintainer's list) | Result | Where |
 |---|---|---|
-| Sign-in (Discord → The Hunter's Dream, keychain) | Works on Mac 1 and Mac 2 | sessions/2026-11-10-byebyevlad.md |
+| Sign-in (Discord → The Hunter's Dream, keychain) | Works on Mac 1 and Mac 2 | sessions/2026-11-10-byebyevlad.md, sessions/2026-11-10-da-ya-pavl.md |
 | Messages, bloodstains, ghosts | Work (receive). Writing a message: not tested | 2026-11-08 notes below |
-| Mac ↔ Windows co-op | Works as guest (2 sessions, Windows hosts, 2026-11-08); a Windows helper joined Mac ↔ Mac sessions on 2026-11-10 | sessions/2026-11-10-byebyevlad.md |
-| Mac ↔ Mac co-op, two networks (different cities) | Works, direct hole punch (2–4 probes), no relay | sessions/2026-11-10-byebyevlad.md |
-| Passwords (co-op) | Work | sessions/2026-11-10-byebyevlad.md |
-| Guest drops (Wi-Fi off 30 s) | Host fine; guest sent home, back online by itself, rejoins without restart | sessions/2026-11-10-byebyevlad.md |
-| Host drops (Wi-Fi off 30 s) | Guest gets "Session lost" cleanly, **then cannot rejoin until it restarts** | findings/guest-stuck-after-host-timeout.md |
+| Mac ↔ Windows co-op | Works as guest (2 sessions, Windows hosts, 2026-11-08); a Windows helper joined Mac ↔ Mac sessions on 2026-11-10 | sessions/2026-11-10-byebyevlad.md, sessions/2026-11-10-da-ya-pavl.md |
+| Mac ↔ Mac co-op, two networks (different cities) | Works, direct hole punch (1–4 probes), no relay | sessions/2026-11-10-byebyevlad.md, sessions/2026-11-10-da-ya-pavl.md |
+| Passwords (co-op) | Work (IME dialog) | sessions/2026-11-10-byebyevlad.md, sessions/2026-11-10-da-ya-pavl.md |
+| Guest drops (Wi-Fi off 30 s) | Host fine (zero hitch/crash); guest sent home, back online by itself, rejoins without restart | sessions/2026-11-10-byebyevlad.md, sessions/2026-11-10-da-ya-pavl.md |
+| Host drops (Wi-Fi off 30 s) | Host survives, but retains stale port and locks bells (`notify_multi_play_error`); guest gets "Session lost", **then cannot rejoin until restarting** | findings/guest-stuck-after-host-timeout.md |
 | Normal quit (guest) | Clean exit, no hang | sessions/2026-11-10-byebyevlad.md |
-| Normal quit (host), force quit (both) | Not tested yet | |
+| Normal quit (host) | Clean exit, archive flushed, no hang (Mac 2) | sessions/2026-11-10-da-ya-pavl.md |
+| Force quit (both) | Not tested yet | |
 | Invasions | **Never matched**, neither as invader nor as host, over two evenings | findings/invasions-no-match.md |
-| Long session | 121 min online on Mac 1, no crash; FPS fell to 22–24 as memory grew | sessions/2026-11-10-byebyevlad.md |
-| Hosting (Mac 1 as host) | Not tested yet (Mac 2 hosted) | |
+| Long session | 121 min online on Mac 1 (FPS 22–24); 84 min and 48 min on Mac 2 (locked 60 FPS, 0 MB/hr leak) | sessions/2026-11-10-byebyevlad.md, sessions/2026-11-10-da-ya-pavl.md |
+| Hosting (Mac 2 as host) | Verified working across 4 rooms | sessions/2026-11-10-da-ya-pavl.md |
+| Hosting (Mac 1 as host) | Not tested yet | |
 | Packaged app | Not tested yet | |
 | Mods/cheats online rule | Not tested yet | |
 
@@ -28,8 +30,7 @@ bloodstains and ghosts appear. Two co-op sessions as a guest in Windows players'
 
 ## Open findings
 
-1. **Guest stuck after the host times out:** reproduced twice. Client side (`gpu/bbnet/thd`).
-   Lead: after the room closes the game re-activates signaling to the old host, and the client
-   reports that connection established at once.
-2. **Invasions never match:** cause unknown (game rules, The Hunter's Dream server, or client).
-   Needs `BB_THD_TRACE=1` and a comparison with Windows players.
+1. **Guest stuck and host endpoint stale after host times out:** reproduced twice. Client side (`gpu/bbnet/thd`).
+   - Host side: `MappedRefresh` retains the pre-outage mapped port and sets a 120s cooldown on failure, advertising a dead port when a new room is created. Host also latches `/penalty/notify_multi_play_error`, locking inventory bells until title screen reload.
+   - Guest side: guest socket remains bound to the dead connection and fails to process new punch probes until restarted.
+2. **Invasions never match:** cause unknown. On Mac 2 (BL 15 in Central Yharnam), no Bell-Ringing Woman spawned for the solo host. Needs `BB_THD_TRACE=1` and investigation into chime maiden triggers.
