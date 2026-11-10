@@ -97,8 +97,8 @@ set_target_properties(bbnet-session-test PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${
 
 # Summoning again after a session ended badly: the peer table's hole punches.
 add_executable(bbnet-rejoin-test EXCLUDE_FROM_ALL ../../tests/test_thd_rejoin.cpp
-    thd/thd_session.cpp)
-target_include_directories(bbnet-rejoin-test PRIVATE . ../third_party/httplib ../shadps4)
+    thd/thd_session.cpp thd/thd_np.cpp)
+target_include_directories(bbnet-rejoin-test PRIVATE ../../tests/thd_shim . ../third_party/httplib ../shadps4)
 target_compile_options(bbnet-rejoin-test PRIVATE -UNDEBUG)
 target_compile_definitions(bbnet-rejoin-test PRIVATE CPPHTTPLIB_OPENSSL_SUPPORT CPPHTTPLIB_ZLIB_SUPPORT)
 target_link_libraries(bbnet-rejoin-test PRIVATE nlohmann_json::nlohmann_json OpenSSL::SSL

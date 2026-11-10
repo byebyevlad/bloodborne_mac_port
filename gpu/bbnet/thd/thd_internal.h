@@ -145,6 +145,7 @@ std::string NpIdText(const void* npid);
 // ---- signaling (thd_np.cpp), driven by matching2
 void SignalingPeerKnown(std::uint16_t member_id);
 void SignalingPeerDead(const std::string& online_id);
+int SignalingActivate(unsigned ctx, const std::string& peer, unsigned* conn_out);
 void SignalingReset();
 
 void RegisterNet(Core::Loader::SymbolsResolver* sym);
