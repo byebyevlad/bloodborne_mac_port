@@ -30,7 +30,12 @@ bloodstains and ghosts appear. Two co-op sessions as a guest in Windows players'
 
 ## Open findings
 
-1. **Guest stuck and host endpoint stale after host times out:** reproduced twice. Client side (`gpu/bbnet/thd`).
-   - Host side: `MappedRefresh` retains the pre-outage mapped port and sets a 120s cooldown on failure, advertising a dead port when a new room is created. Host also latches `/penalty/notify_multi_play_error`, locking inventory bells until title screen reload.
-   - Guest side: guest socket remains bound to the dead connection and fails to process new punch probes until restarted.
-2. **Invasions never match:** cause unknown. On Mac 2 (BL 15 in Central Yharnam), no Bell-Ringing Woman spawned for the solo host. Needs `BB_THD_TRACE=1` and investigation into chime maiden triggers.
+1. **Rejoin fails after the host drops:** reproduced twice, client side (`gpu/bbnet/thd`).
+   Mac 1's reading: the host reuses a stale, unresolved signaling connection, and the guest never
+   punches again toward a host address it already knows. Mac 2's reading: a stale mapped port on the
+   host, and `/penalty/notify_multi_play_error` keeping the bells locked until the title screen.
+   Details and the evidence for each in findings/guest-stuck-after-host-timeout.md; the traced repro
+   decides.
+2. **Invasions never match:** cause unknown. On Mac 2 (level 15, Central Yharnam) no Bell-Ringing
+   Woman appeared for the solo host. The Hunter's Dream supports invasions but matches only within
+   the same client. Needs `BB_THD_TRACE=1` and a comparison with Windows players.

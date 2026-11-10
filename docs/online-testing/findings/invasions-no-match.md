@@ -31,6 +31,17 @@ Status: observed, cause unknown.
   the game's own sign server"). If the game used room search for invasions, that would block them;
   not verified.
 
+## What The Hunter's Dream says
+
+The server's own site says invasions are supported, but matching is client-locked: bbhost and
+shadPS4 players do not match each other, for co-op or invasions. Co-op between the Mac client and
+Windows players works, so the Mac client is in some pool; whether that pool allows invasions for
+the `bbport-mac` client name is unknown.
+
+Mac 2's logs: during the 2026-11-10 invasion attempt (00:59–01:20) Mac 2's game created no room
+until 01:17, when a Windows player joined as a co-op helper. Before 00:59 Mac 2 ran a different
+build (`dev`), so the earlier part of the attempt was not between identical builds.
+
 ## Possible causes
 
 1. Game rules: no Bell-Ringing Woman in the host's world, boss defeated, levels out of range.

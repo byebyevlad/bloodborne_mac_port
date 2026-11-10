@@ -96,28 +96,47 @@ Reproduction at 02:00:11–02:05:
 
 Following this second drop, Mac 2's Beckoning Bell and Silencing Blank became grayed out/locked in inventory due to the unhandled `notify_multi_play_error` penalty latch. Returning to the Title Screen and choosing Continue cleared the lock.
 
-## Lead
+### On the "stale mapped port" explanation
 
-`gpu/bbnet/thd/thd_np.cpp`, `sig_activate`: when the game activates a connection to a peer that is
-not a room member, the client resolves the peer's address on the server and, if it finds one,
-reports ESTABLISHED then ACTIVE (`announce_locked`) with no traffic from the peer. After the room
-is gone the game activates a connection to the old host (conn 5 / conn 2 above), the address
-resolves because the host is online again, and the game is told it has a live connection to the
-host outside any session. Hypothesis: the game then ignores further summons from that host while
-it believes this connection is up. On a PS4 the activation would only succeed with the peer
-answering.
+Mac 2's notes suggest that `MappedRefresh`'s 120 s cooldown kept a stale pre-outage port. Two things
+argue against it as the cause: `KeepaliveMain` (`thd_session.cpp`) calls `MappedRefresh(true)` every
+15 s, which bypasses the cooldown, and Mac 2's address and port were the same before and after
+(port 3658 both times, no `our address is now` after the outage because nothing changed). The guest
+also heard Mac 2's probes at 01:39:26. The two client bugs below fit both logs; the trace run should
+settle it.
 
-Possible fixes, to choose after the trace below:
-- do not announce a connection to a peer we share no room with unless the peer answers (or the
-  peer is the guest a host is summoning, the case the code comment describes);
-- fire DEAD for such a connection after a timeout without traffic;
-- clear signaling state for the old host when `room_gone_locked` runs (it already marks the old
-  connections dead, but the later activation creates a new one).
+## Mechanism (two client bugs, `gpu/bbnet/thd`)
+
+**A. Host: a stale, unresolved connection is reused (01:39–01:47).** During its outage the host's
+game activated connections to the guest. The last one (conn 6) was created after the session
+ended and could not be resolved, so it has no member and is never announced. `sig_activate`
+(`thd_np.cpp`) is idempotent per peer: later activations for byebyevlad return that same live but
+unannounced connection without logging. The host's game never gets ESTABLISHED for the guest, so
+it never summons. Room 14501 waited eight minutes with no activation in the log.
+
+**B. Guest: no new hole punch for a known address (01:49–01:52).** The guest's client punches only
+when a peer's address changes (`PunchIfNew`, `thd_session.cpp`). After the session ended, the
+guest kept the host's address in its peer table (the post-session activation at 01:37:37 resolved
+it, and the first invite at 01:39 seeded it again). Every later invite carried the same address,
+so the guest never punched again, and its router's mapping toward the host expired. The restarted
+host then punched 40 times and heard nothing. Restarting the guest cleared its peer table, so the
+next invite punched (4 probes) and the join went through.
+
+Test 1 worked because the guest's post-session activation failed while it was offline: nothing
+stale was left on either side.
+
+## Fix candidates
+
+- Guest: punch on every `guest_invite` (or when the last punch toward that peer is older than
+  ~20 s), not only when the address changes.
+- Both: when a room ends, drop the peer entries and connections that belonged to it, including
+  ones activated after the room ended, so the next session starts clean.
+- Host: in `sig_activate`, do not reuse a connection that never resolved; resolve again (or mark
+  the old one dead and create a new one).
 
 ## Next steps
 
-1. Reproduce with `BB_THD_TRACE=1` on the guest (Mac 1) to see the signaling callbacks, the
-   game's status reads and the P2P datagrams from the host after each invite.
-2. Mac 2's log for the same minutes (host side: summon datagrams sent after each invite?).
-3. Check whether Windows players see the same (the backend comes unchanged from the Windows
-   port).
+1. Reproduce with `BB_THD_TRACE=1` on both Macs to confirm (signaling events, datagrams).
+2. Implement the fix on a branch from `pr-78-rebased`, repeat test 2 three times, then open a PR
+   into `pr-78-rebased`.
+3. Tell the Windows port: the backend comes from it unchanged.
