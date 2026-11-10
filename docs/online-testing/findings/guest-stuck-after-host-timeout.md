@@ -134,9 +134,68 @@ stale was left on either side.
 - Host: in `sig_activate`, do not reuse a connection that never resolved; resolve again (or mark
   the old one dead and create a new one).
 
+## Fix, split in two (branch `fix/thd-rejoin-after-host-drop` on byebyevlad's fork)
+
+Both mechanisms are confirmed by reading the code; neither is confirmed in play yet.
+
+### Guest half: done (byebyevlad, commit "THD: a repeated invite punches again")
+
+`PeersPunchAgain(member, min_age_ms = 15000)` in `thd_session.cpp`; the `guest_invite` handler in
+`thd_matching2.cpp` calls it when not in a room. `tests/test_thd_rejoin.cpp` (target
+`bbnet-rejoin-test`, run by `build_macos.sh --test`) covers it.
+
+### Host half: to do (da-ya-pavl), as one commit on top of the guest half
+
+The bug, in `sig_activate` (`gpu/bbnet/thd/thd_np.cpp`): the reuse loop ("Idempotent per peer")
+returns an existing live connection for the peer. If that connection was created while
+`ServerSignalingResolve` failed (host offline: `not known and not resolved`), its `member_id` is 0.
+The loop only tries `PeersFindOnline`, which finds nothing for a guest who is not a room member, so
+`announce_locked` returns early every time: the game never gets ESTABLISHED/ACTIVE and never
+summons. Only the create path below the loop ever asks the server.
+
+The change:
+
+1. Move the resolve block of the create path (`ServerSignalingResolve` → `PeersProvisional` → the
+   `(resolved a.b.c.d:port)` / `(not known and not resolved: ...)` text) into a helper
+   `std::string resolve_locked(Conn& c)`, and use it in the create path.
+2. Add `std::int64_t resolve_ms = 0;` to `Conn`; the helper sets it to `NowMs()`.
+3. In the reuse loop, after the `PeersFindOnline` attempt: if `member_id` is still 0 and
+   `NowMs() - c.resolve_ms >= 1000`, call the helper and log
+   `sceNpSignalingActivateConnection <peer> -> conn <id> again<how>`. Then `announce_locked` as now.
+   The one-second floor matters: the game re-activates often, and each resolve is an HTTP request
+   made under `g_sig_mu`.
+4. For the test, make the logic callable without a guest NpId: `sig_activate` becomes
+   `return SignalingActivate(ctx, NpIdText(npid), conn_out);`, and
+   `int SignalingActivate(unsigned ctx, const std::string& peer, unsigned* conn_out)` is declared in
+   `thd_internal.h` next to `SignalingReset` and defined outside the anonymous namespace.
+5. Keep the files' CRLF line endings.
+
+The test (extend `tests/test_thd_rejoin.cpp`):
+
+- Add `thd/thd_np.cpp` to the `bbnet-rejoin-test` target in `gpu/bbnet/CMakeLists.txt`.
+  `thd_np.cpp` includes `core/libraries/libs.h`, and the real one pulls in the GPU library's
+  headers. Add a test-only `tests/thd_shim/core/libraries/libs.h` (just `SymbolsResolver` with
+  `AddSymbol`, `SymbolType` and the `LIB_FUNCTION` macro, including `common/types.h`), put
+  `../../tests/thd_shim` first in the target's include directories, and define an empty
+  `Core::Loader::SymbolsResolver::AddSymbol` in the test. Remove the test's `RegisterNp` stub.
+- `announce_locked` uses `DispatchAfter`, which starts the dispatcher through
+  `runtime_thread_spawn`: the test's stub must start a detached `std::thread` and return 0 instead
+  of aborting. With no signaling context created, no guest callback is ever called.
+- A loopback `httplib::Server` (as in `tests/test_thd_session.cpp`) answers
+  `POST /np/signaling/resolve` with `{"ResKind":1}` until a flag is set, then
+  `{"ResKind":0,"Addr":"203.0.113.7","Port":3658}`. Point `BB_THD_SERVER` at it.
+- Assert: the first `SignalingActivate(1, "guest", &a)` makes one request and leaves "guest"
+  unknown (`PeersFindOnline` false). Set the flag. An immediate second call returns the same
+  connection and makes no request. After 1.1 s a third call makes the second request, and then
+  `PeersFindOnline("guest", &p)` holds with `p.conn_id == a` and `p.sig_status == 2`. A fourth call
+  makes no further request.
+- Write the test first and see it fail on the request count, then make the change.
+
 ## Next steps
 
-1. Reproduce with `BB_THD_TRACE=1` on both Macs to confirm (signaling events, datagrams).
-2. Implement the fix on a branch from `pr-78-rebased`, repeat test 2 three times, then open a PR
-   into `pr-78-rebased`.
-3. Tell the Windows port: the backend comes from it unchanged.
+1. Mac 2 implements the host half on the same branch (above).
+2. Both Macs on that branch with `BB_THD_TRACE=1`: repeat the host-drop test three times, once with
+   the roles swapped.
+3. One PR with both commits into the #78 branch (evill33t's `codex/pr9-online-review`), which
+   targets `release-0.7`.
+4. Tell the Windows port: the backend comes from it unchanged.
