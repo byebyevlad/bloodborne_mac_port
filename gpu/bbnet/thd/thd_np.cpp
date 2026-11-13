@@ -34,6 +34,7 @@ struct Conn {
     std::uint16_t member_id = 0;
     bool announced = false;
     bool dead = false;
+    std::int64_t resolve_ms = 0;
 };
 std::mutex g_sig_mu;
 std::map<unsigned, SigCtx> g_sig_ctx;
@@ -64,6 +65,21 @@ void announce_locked(unsigned conn_id, Conn& c) {
     DispatchAfter(400, Prio::Signaling, [ctx, conn_id] { sig_fire(ctx, conn_id, kEvActive, 0); });
 }
 
+std::string resolve_locked(Conn& c) {
+    c.resolve_ms = NowMs();
+    std::uint32_t addr = 0;
+    std::uint16_t port = 0;
+    std::string error;
+    if (ServerSignalingResolve(c.online_id, &addr, &port, error)) {
+        c.member_id = PeersProvisional(c.online_id, addr, port).member_id;
+        char text[64];
+        std::snprintf(text, sizeof(text), " (resolved %u.%u.%u.%u:%u)", addr & 0xff, (addr >> 8) & 0xff,
+                      (addr >> 16) & 0xff, addr >> 24, port);
+        return text;
+    }
+    return " (not known and not resolved: " + error + ")";
+}
+
 s32 PS4_SYSV_ABI sig_init(u64, int, int, u64) { return 0; }
 s32 PS4_SYSV_ABI sig_term() {
     std::lock_guard lk(g_sig_mu);
@@ -87,48 +103,7 @@ s32 PS4_SYSV_ABI sig_delete_ctx(unsigned ctx) {
 }
 // Idempotent per peer: the game re-activates.
 s32 PS4_SYSV_ABI sig_activate(unsigned ctx, const void* npid, unsigned* conn_out) {
-    if (!conn_out) return kSigErrInvalidArg;
-    const std::string peer = NpIdText(npid);
-    std::lock_guard lk(g_sig_mu);
-    for (auto& [id, c] : g_conn) {
-        if (c.ctx == ctx && c.online_id == peer && !c.dead) {
-            *conn_out = id;
-            if (!c.member_id) {
-                Peer p;
-                if (PeersFindOnline(peer, &p)) c.member_id = p.member_id;
-            }
-            announce_locked(id, c);
-            return 0;
-        }
-    }
-    const unsigned id = g_next_conn++;
-    Conn c;
-    c.ctx = ctx;
-    c.online_id = peer;
-    Peer p;
-    if (PeersFindOnline(peer, &p)) c.member_id = p.member_id;
-    std::string how;
-    if (!c.member_id) {
-        // The host activates its connection to the guest it summons before the guest is a room
-        // member: the server resolves the address from the guest's context_start.
-        std::uint32_t addr = 0;
-        std::uint16_t port = 0;
-        std::string error;
-        if (ServerSignalingResolve(peer, &addr, &port, error)) {
-            c.member_id = PeersProvisional(peer, addr, port).member_id;
-            char text[64];
-            std::snprintf(text, sizeof(text), " (resolved %u.%u.%u.%u:%u)", addr & 0xff, (addr >> 8) & 0xff,
-                          (addr >> 16) & 0xff, addr >> 24, port);
-            how = text;
-        } else {
-            how = " (not known and not resolved: " + error + ")";
-        }
-    }
-    g_conn[id] = c;
-    *conn_out = id;
-    Log("sceNpSignalingActivateConnection %s -> conn %u%s", peer.c_str(), id, how.c_str());
-    announce_locked(id, g_conn[id]);
-    return 0;
+    return SignalingActivate(ctx, NpIdText(npid), conn_out);
 }
 s32 PS4_SYSV_ABI sig_deactivate(unsigned ctx, unsigned conn) {
     std::lock_guard lk(g_sig_mu);
@@ -364,6 +339,41 @@ s32 PS4_SYSV_ABI webapi_parse_npid(const char* json, void* npid) {
 }
 
 } // namespace
+
+int SignalingActivate(unsigned ctx, const std::string& peer, unsigned* conn_out) {
+    if (!conn_out) return kSigErrInvalidArg;
+    std::lock_guard lk(g_sig_mu);
+    for (auto& [id, c] : g_conn) {
+        if (c.ctx == ctx && c.online_id == peer && !c.dead) {
+            *conn_out = id;
+            if (!c.member_id) {
+                Peer p;
+                if (PeersFindOnline(peer, &p)) c.member_id = p.member_id;
+            }
+            if (!c.member_id && NowMs() - c.resolve_ms >= 1000) {
+                const std::string how = resolve_locked(c);
+                Log("sceNpSignalingActivateConnection %s -> conn %u again%s", peer.c_str(), id, how.c_str());
+            }
+            announce_locked(id, c);
+            return 0;
+        }
+    }
+    const unsigned id = g_next_conn++;
+    Conn c;
+    c.ctx = ctx;
+    c.online_id = peer;
+    Peer p;
+    if (PeersFindOnline(peer, &p)) c.member_id = p.member_id;
+    std::string how;
+    if (!c.member_id) {
+        how = resolve_locked(c);
+    }
+    g_conn[id] = c;
+    *conn_out = id;
+    Log("sceNpSignalingActivateConnection %s -> conn %u%s", peer.c_str(), id, how.c_str());
+    announce_locked(id, g_conn[id]);
+    return 0;
+}
 
 void SignalingPeerKnown(std::uint16_t member_id) {
     Peer p;
