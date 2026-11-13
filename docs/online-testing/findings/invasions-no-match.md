@@ -18,6 +18,13 @@ Status: observed, cause unknown.
   - **Mac 2 THD log lines:** The log showed only regular background polling and STUN keepalives
     (`THD: np: the server holds polls (WaitMaxMs 25000): long polling with WaitMs 25000`). No room
     creation or matchmaking requests occurred, and no network errors were recorded.
+- 2026-11-13, ~20:50: Mac 1 summoned an NPC helper (an old hunter) and a Bell-Ringing Woman
+  spawned in its world, so the host was open to invasion (area and level to be added). The log
+  (`BB_THD_TRACE=1`, build 96dd318) shows nothing from the session since start-up: no room, no
+  invite, no P2P datagram. NPC summons are local, so the game opened no room; whether it told the
+  server the host is invadable goes through the game's own requests, which are not logged.
+  This gives a reliable setup for the controlled test: host summons an NPC to spawn the woman,
+  invader rings the Sinister bell nearby at a close level.
 - While the Sinister bell rings, the log shows nothing at all: no matchmaking calls and no failed
   requests. The invader search goes through the game's own server requests, which the client logs
   only when they fail.
