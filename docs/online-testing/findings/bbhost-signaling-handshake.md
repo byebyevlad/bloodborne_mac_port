@@ -1,6 +1,7 @@
 # Current bbhost players can't connect to the Mac client: missing signaling handshake
 
-Status: cause identified from the host's log and bbhost's source; fix not written.
+Status: fixed on branch fix/thd-bbhost-signaling (34a1ef2 + 0a4b21c); co-op and an invasion with a
+bbhost v0.2.3x player worked on 2026-11-14.
 
 ## Observation (Mac 1 host, 2026-11-14, test build 0fa03c8, `BB_THD_TRACE=1`)
 
@@ -61,3 +62,20 @@ Mac 1 host (Beckoning Bell, Bell-Ringing Woman present), bbhost v0.2.3x invader 
 Open: why the invader didn't join (likely another part of bbhost #217's matching2 changes on his
 side), and whether the crash comes from the overlapping second session. Next: a clean co-op test
 with both games restarted.
+
+## Second fix and the working test (2026-11-14 ~15:20, 0a4b21c)
+
+Cause of the stall: bbhost's game waits for MUTUAL_ACTIVATED (0x0c) before it goes on with a
+summon, and bbhost sets the connection's "peer activated" mark only from the other side's
+ActivationRequest (`hle_np_signaling_control`, kActivationRequest). We answered the handshake
+but never sent one. 0a4b21c sends it once, when our game has its own connection to a peer that
+spoke the handshake (never to Mac peers).
+
+Live, same players, both games restarted:
+- Co-op, Mac host: 15:20:07 handshake with our ActivationRequest answered (ActivationAck),
+  15:20:09 the bbhost player joined the room as member 2; left normally at 15:21:34.
+- Invasion, Mac invading the bbhost host: 15:22:04 handshake, 15:22:06 joined his room as
+  member 2; left at 15:23:05. The player confirmed the invasion worked.
+
+Not yet tested: a bbhost player invading the Mac host, rejoin after drops with bbhost peers,
+long sessions.
