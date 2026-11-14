@@ -44,3 +44,20 @@ Windows players working on 2026-11-08 and Mac-to-Mac working on 2026-11-10.
    (co-op both ways and an invasion).
 3. This also covers part of the maintainer's "drop unsolicited datagrams" request: these
    packets must be consumed, not handed to the game.
+
+## Live test of the responder (2026-11-14 ~15:03, branch fix/thd-bbhost-signaling 34a1ef2)
+
+Mac 1 host (Beckoning Bell, Bell-Ringing Woman present), bbhost v0.2.3x invader (Sinister bell):
+
+- 15:03:49 room created for the invasion; 15:03:52 the invader's ActivationRequest, Offer and
+  Check were answered; 15:03:53 "handshake done", the invader's Established arrived. Game
+  datagrams flowed both ways (a few of 15-62 bytes, then 9-byte keep-alives every 6 s).
+- The invader never joined the room on the server (no `room_member_joined`); after 60 s the host
+  game left the room (15:04:52). The connection stayed open (keep-alives until 15:06).
+- 15:06:29 a co-op attempt with the same player: new room, the host game activated a second
+  connection to him while the first was still open, sent its 15-byte summon datagrams; his last
+  datagram arrived 15:06:30.9 and his game crashed (no crash details available).
+
+Open: why the invader didn't join (likely another part of bbhost #217's matching2 changes on his
+side), and whether the crash comes from the overlapping second session. Next: a clean co-op test
+with both games restarted.
