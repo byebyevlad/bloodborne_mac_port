@@ -29,6 +29,7 @@ namespace BbThd {
 std::string DetectLanAddress(const std::string&) { return "127.0.0.1"; }
 bool P2pStun(const char*, std::uint16_t, int, std::uint32_t*, std::uint16_t*, Relay*) { return false; }
 void P2pPunch(const char*, std::uint32_t, std::uint16_t, std::uint32_t, std::uint16_t) { ++g_punches; }
+void P2pSignal(std::uint32_t, std::uint16_t, const void*, std::size_t) {}
 void RegisterNet(Core::Loader::SymbolsResolver*) {}
 void RegisterMatching2(Core::Loader::SymbolsResolver*) {}
 }
