@@ -47,6 +47,7 @@ struct Handshake {
     std::uint32_t addr = 0; // network order: where its datagrams came from (often the relay)
     std::uint16_t port = 0; // host order
     bool established = false;
+    bool sent_activation = false; // our ActivationRequest went out (once our game has a connection)
 };
 std::mutex g_sig_mu;
 std::map<unsigned, SigCtx> g_sig_ctx;
@@ -397,6 +398,19 @@ unsigned find_conn_locked(const std::string& online_id) {
     return 0;
 }
 
+// Our ActivationRequest, once, when our game has activated its own connection to a bbhost peer.
+// bbhost marks its connection "peer activated" only from this message, and its game waits for
+// MUTUAL_ACTIVATED (0x0c), which needs that mark: without it the summon stops after the handshake.
+// Sent only to peers that spoke the handshake, so Mac peers never get it.
+void sig_activation_locked(const std::string& peer, Handshake& h) {
+    if (h.sent_activation) return;
+    bool local = false;
+    for (const auto& [id, c] : g_conn) local |= !c.dead && c.local && c.online_id == peer;
+    if (!local) return;
+    h.sent_activation = true;
+    sig_send(peer, h, kActivationRequest);
+}
+
 // The peer's handshake is through: Established to it once, and PEER_ACTIVATED for a connection
 // only the peer made (the game then activates its own, which announces as usual).
 void sig_establish_locked(const std::string& from, Handshake& h, std::vector<std::pair<unsigned, unsigned>>& events) {
@@ -473,6 +487,7 @@ void SignalingControl(const std::uint8_t* data, std::size_t len, std::uint32_t a
                 Log("np: bbhost peer %s activated a connection to us -> conn %u", from.c_str(), id);
             }
             sig_send(from, h, kActivationAck);
+            sig_activation_locked(from, h);
             if (h.established) sig_establish_locked(from, h, activated);
         } else if (!known) {
             // A player we have no connection or handshake with: not answered.
@@ -482,6 +497,7 @@ void SignalingControl(const std::uint8_t* data, std::size_t len, std::uint32_t a
                 h.addr = addr;
                 h.port = port;
             }
+            sig_activation_locked(from, h);
             switch (kind) {
             case kOffer: sig_send(from, h, kAccept); break;
             case kCheck:
@@ -531,6 +547,7 @@ int SignalingActivate(unsigned ctx, const std::string& peer, unsigned* conn_out)
                 Log("sceNpSignalingActivateConnection %s -> conn %u again%s", peer.c_str(), id, how.c_str());
             }
             announce_locked(id, c);
+            if (const auto h = g_hs.find(peer); h != g_hs.end()) sig_activation_locked(peer, h->second);
             return 0;
         }
     }
@@ -548,6 +565,7 @@ int SignalingActivate(unsigned ctx, const std::string& peer, unsigned* conn_out)
     *conn_out = id;
     Log("sceNpSignalingActivateConnection %s -> conn %u%s", peer.c_str(), id, how.c_str());
     announce_locked(id, g_conn[id]);
+    if (const auto h = g_hs.find(peer); h != g_hs.end()) sig_activation_locked(peer, h->second);
     return 0;
 }
 

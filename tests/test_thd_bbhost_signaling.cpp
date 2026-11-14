@@ -158,9 +158,15 @@ int main() {
     assert(take_sent().empty());
     assert(take_events().empty());
 
-    // The game answers with its own activation: the same connection, ESTABLISHED then ACTIVE.
+    // The game answers with its own activation: the same connection, ESTABLISHED then ACTIVE,
+    // and our ActivationRequest to the invader (bbhost's game waits for MUTUAL_ACTIVATED, which
+    // needs it), once.
     unsigned mine = 0;
     assert(BbThd::SignalingActivate(ctx, "invader", &mine) == 0 && mine == conn);
+    sent = take_sent();
+    assert(sent.size() == 1 && sent[0].kind == kActivationRequest && sent[0].to == "invader");
+    assert(BbThd::SignalingActivate(ctx, "invader", &mine) == 0 && mine == conn);
+    assert(take_sent().empty());
     std::this_thread::sleep_for(600ms);
     ev = take_events();
     assert(ev.size() == 2 && ev[0].event == 0x01 && ev[1].event == 0x0c && ev[0].conn == conn);
@@ -188,10 +194,12 @@ int main() {
     assert(BbThd::SignalingActivate(ctx, "guest", &g) == 0 && g);
     std::this_thread::sleep_for(600ms);
     take_events();
+    deliver(packet(kActivationRequest, 1, "guest", "fixture"));
     deliver(packet(kOffer, 1, "guest", "fixture"));
     deliver(packet(kCheck, 1, "guest", "fixture", 9));
     sent = take_sent();
-    assert(sent.size() == 3 && sent[0].kind == kAccept && sent[1].kind == kCheckAck && sent[2].kind == kEstablished);
+    assert(sent.size() == 5 && sent[0].kind == kActivationAck && sent[1].kind == kActivationRequest &&
+           sent[2].kind == kAccept && sent[3].kind == kCheckAck && sent[4].kind == kEstablished);
     std::this_thread::sleep_for(100ms);
     assert(take_events().empty());
 
