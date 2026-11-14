@@ -79,3 +79,12 @@ Live, same players, both games restarted:
 
 Not yet tested: a bbhost player invading the Mac host, rejoin after drops with bbhost peers,
 long sessions.
+
+## Host Wi-Fi drop with a bbhost helper (2026-11-14)
+
+- 15:25:37 Mac host's Wi-Fi off (~30 s); 15:25:45 session over, 15:26:57 the server closed the room.
+- 15:33:15 Mac host rang again: room created, nothing from the bbhost helper for 5+ minutes (no
+  handshake, no join): the stuck-guest bug of guest-stuck-after-host-timeout.md, on bbhost's side
+  (same `punch_if_new` logic upstream; our guest half runs only on Macs).
+- The helper restarted his game: 15:40:17 room, 15:40:19 activation (resolved), 15:40:20
+  handshake, 15:40:23 joined. The Mac host recovered without a restart.
